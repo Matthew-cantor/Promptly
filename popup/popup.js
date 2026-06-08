@@ -17,8 +17,8 @@ chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
   const url = new URL(tab.url);
   const supported = ['claude.ai', 'chatgpt.com', 'chat.openai.com', 'gemini.google.com'];
   const match = supported.find((s) => url.hostname.includes(s));
-  siteIndicator.textContent = match ? `Active on ${match}` : 'Not on a supported site';
-  siteIndicator.style.color = match ? '#4ade80' : '#888';
+  siteIndicator.textContent = match ? `● ${match}` : '○ no target';
+  siteIndicator.style.color = match ? '#86b98f' : '#646a73';
 });
 
 // Toggle key visibility
@@ -44,6 +44,6 @@ saveBtn.addEventListener('click', async () => {
 
 function showStatus(msg, type = 'success') {
   statusMsg.textContent = msg;
-  statusMsg.style.color = type === 'error' ? '#f87171' : '#4ade80';
+  statusMsg.style.color = type === 'error' ? '#d98b7a' : '#86b98f';
   setTimeout(() => { statusMsg.textContent = ''; }, 2500);
 }

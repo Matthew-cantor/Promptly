@@ -37,9 +37,20 @@ const SITES = {
         document.execCommand('insertText', false, text);
       }
     },
-    getButtonContainer: () =>
-      document.querySelector('div[class*="flex"][class*="bottom"]') ||
-      document.querySelector('form'),
+    getButtonContainer: () => {
+      // Right-side trailing actions in the composer footer (mic + send). The send
+      // button only renders once you've typed, so also anchor on the always-present
+      // mic/voice button. Return null (never <form>) when the footer hasn't mounted
+      // yet, so the MutationObserver retries instead of pinning ⚡ to the bottom-left.
+      const trailing = document.querySelector('[data-testid="composer-trailing-actions"]');
+      if (trailing) return trailing;
+      const anchorBtn =
+        document.querySelector('[data-testid="send-button"]') ||
+        document.querySelector('[data-testid="composer-speech-button"]') ||
+        document.querySelector('button[aria-label="Start voice mode"]') ||
+        document.querySelector('button[aria-label="Dictate button"]');
+      return anchorBtn ? anchorBtn.parentElement : null;
+    },
   },
   'chat.openai.com': {
     name: 'ChatGPT',
@@ -59,8 +70,18 @@ const SITES = {
         document.execCommand('insertText', false, text);
       }
     },
-    getButtonContainer: () =>
-      document.querySelector('form'),
+    getButtonContainer: () => {
+      // Mirror chatgpt.com: anchor on the always-present mic/voice button (and the
+      // trailing-actions wrapper), returning null rather than <form> until mounted.
+      const trailing = document.querySelector('[data-testid="composer-trailing-actions"]');
+      if (trailing) return trailing;
+      const anchorBtn =
+        document.querySelector('[data-testid="send-button"]') ||
+        document.querySelector('[data-testid="composer-speech-button"]') ||
+        document.querySelector('button[aria-label="Start voice mode"]') ||
+        document.querySelector('button[aria-label="Dictate button"]');
+      return anchorBtn ? anchorBtn.parentElement : null;
+    },
   },
   'gemini.google.com': {
     name: 'Gemini',
@@ -95,31 +116,57 @@ function createOverlay() {
   el.id = 'promptly-overlay';
   el.innerHTML = `
     <div id="promptly-panel">
-      <div id="promptly-header">
-        <span id="promptly-logo">⚡ Promptly</span>
-        <button id="promptly-close" title="Close">✕</button>
-      </div>
+      <div id="promptly-grain"></div>
 
-      <div id="promptly-original-section">
-        <label>Your prompt</label>
-        <textarea id="promptly-original" rows="4" placeholder="Your prompt will appear here…"></textarea>
-      </div>
+      <header id="promptly-header">
+        <div id="promptly-brand">
+          <span id="promptly-logo"><img src="${chrome.runtime.getURL('icons/Icon.png')}" alt="" /></span>
+          <span id="promptly-titles">
+            <span id="promptly-wordmark">Promptly</span>
+            <span id="promptly-tagline">AI&nbsp;PROMPT&nbsp;OPTIMIZER</span>
+          </span>
+        </div>
+        <button id="promptly-close" title="Close" aria-label="Close">✕</button>
+      </header>
 
-      <div id="promptly-modes">
-        <button class="mode-btn active" data-mode="clarity">✨ Rewrite for Clarity</button>
-        <button class="mode-btn" data-mode="context">🎯 Add Context</button>
-        <button class="mode-btn" data-mode="alternatives">🔀 Alternatives</button>
-      </div>
+      <div id="promptly-body">
+        <section id="promptly-original-section">
+          <label for="promptly-original">Input · your prompt</label>
+          <textarea id="promptly-original" rows="4" placeholder="Paste or type the prompt you want to refine…"></textarea>
+        </section>
 
-      <button id="promptly-optimize-btn">Optimize Prompt</button>
+        <section id="promptly-modes-section">
+          <label>Optimization mode</label>
+          <div id="promptly-modes">
+            <button class="mode-btn active" data-mode="clarity">
+              <span class="mode-idx">01</span>
+              <span class="mode-name">Rewrite</span>
+              <span class="mode-desc">Specificity &amp; concision</span>
+            </button>
+            <button class="mode-btn" data-mode="context">
+              <span class="mode-idx">02</span>
+              <span class="mode-name">Add Context</span>
+              <span class="mode-desc">Role, format &amp; tone</span>
+            </button>
+            <button class="mode-btn" data-mode="alternatives">
+              <span class="mode-idx">03</span>
+              <span class="mode-name">Alternatives</span>
+              <span class="mode-desc">Three variants</span>
+            </button>
+          </div>
+        </section>
 
-      <div id="promptly-results-section" style="display:none">
-        <label>Optimized prompt</label>
-        <div id="promptly-results"></div>
-      </div>
+        <button id="promptly-optimize-btn">Optimize Prompt</button>
 
-      <div id="promptly-api-note" style="display:none">
-        <span>⚠️ Add your API key in the extension popup to enable optimization.</span>
+        <section id="promptly-results-section" style="display:none">
+          <label>Output · optimized</label>
+          <div id="promptly-results"></div>
+        </section>
+
+        <div id="promptly-api-note" style="display:none">
+          <span class="note-bar"></span>
+          <span>Add your API key in the extension popup to enable optimization.</span>
+        </div>
       </div>
     </div>
   `;
@@ -186,7 +233,7 @@ async function runOptimization(prompt, mode) {
     });
 
     if (response.error === 'NO_API_KEY') {
-      apiNote.style.display = 'block';
+      apiNote.style.display = 'flex';
       return;
     }
 
@@ -244,26 +291,20 @@ function injectButton() {
   const btn = document.createElement('button');
   btn.id = 'promptly-trigger-btn';
   btn.title = 'Open Promptly prompt optimizer';
-  btn.innerHTML = '⚡';
+  btn.innerHTML = `<img src="${chrome.runtime.getURL('icons/Icon.png')}" alt="Promptly" />`;
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     openOverlay();
   });
 
-  // Try to insert near the send button / form
+  // Insert into the composer's trailing-actions group (right side of the bar).
+  // If the container isn't there yet, bail without injecting — the MutationObserver
+  // will call back once it mounts, rather than stranding ⚡ in a fixed-position spot.
   const container = siteConfig.getButtonContainer();
-  if (container) {
-    container.style.position = container.style.position || 'relative';
-    container.appendChild(btn);
-  } else {
-    // Fallback: position near input
-    const rect = input.getBoundingClientRect();
-    btn.style.position = 'fixed';
-    btn.style.top = `${rect.top + window.scrollY}px`;
-    btn.style.left = `${rect.right + 8}px`;
-    document.body.appendChild(btn);
-  }
+  if (!container) return;
+  container.style.position = container.style.position || 'relative';
+  container.appendChild(btn);
 }
 
 // ─── Observe DOM for SPA navigation ──────────────────────────────────────────
