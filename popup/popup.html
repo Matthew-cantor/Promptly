@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Promptly</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <span class="logo">⚡ Promptly</span>
+    <span class="tagline">Prompt optimizer</span>
+  </header>
+
+  <main>
+    <div class="field">
+      <label for="provider">Optimizer API</label>
+      <select id="provider">
+        <option value="openai">OpenAI (GPT-4o mini)</option>
+        <option value="anthropic">Anthropic (Claude Haiku)</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="apiKey">API Key</label>
+      <div class="key-row">
+        <input type="password" id="apiKey" placeholder="sk-… or sk-ant-…" autocomplete="off" />
+        <button id="toggle-visibility" title="Show/hide key">👁</button>
+      </div>
+      <p class="hint">Stored locally in your browser. Never sent to Promptly servers.</p>
+    </div>
+
+    <button id="save-btn">Save Settings</button>
+    <div id="status-msg"></div>
+  </main>
+
+  <footer>
+    <a href="https://github.com/" target="_blank" rel="noopener">Docs</a>
+    &middot;
+    <span id="site-indicator">—</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
