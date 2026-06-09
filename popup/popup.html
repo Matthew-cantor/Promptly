@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Promptly</title>
+  <title>Promptera</title>
   <link rel="stylesheet" href="../fonts/fonts.css" />
   <link rel="stylesheet" href="popup.css" />
 </head>
@@ -11,33 +11,9 @@
   <div class="grain"></div>
 
   <header>
-    <img class="logo" src="../icons/Logo.png" alt="Promptly — AI Prompt Optimizer" />
+    <img class="logo" src="../icons/Logo.png" alt="Promptera — AI Prompt Optimizer" />
     <span class="build">v0.1.0</span>
   </header>
-
-  <main>
-    <div class="field">
-      <label for="provider">Optimizer API</label>
-      <div class="select-wrap">
-        <select id="provider">
-          <option value="openai">OpenAI · GPT-4o mini</option>
-          <option value="anthropic">Anthropic · Claude Haiku</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="field">
-      <label for="apiKey">API Key</label>
-      <div class="key-row">
-        <input type="password" id="apiKey" placeholder="sk-… / sk-ant-…" autocomplete="off" />
-        <button id="toggle-visibility" title="Show / hide key">👁</button>
-      </div>
-      <p class="hint">Stored locally in your browser. Never sent to Promptly servers.</p>
-    </div>
-
-    <button id="save-btn">Save Settings</button>
-    <div id="status-msg"></div>
-  </main>
 
   <footer>
     <a href="https://github.com/" target="_blank" rel="noopener">Docs</a>

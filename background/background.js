@@ -1,5 +1,7 @@
-// Promptly — background service worker
+// Promptera — background service worker
 // Handles API calls so we can safely store keys in chrome.storage and avoid CORS issues.
+
+const GEMINI_API_KEY = 'placeholder';
 
 const SYSTEM_PROMPTS = {
   clarity: `You are an expert prompt engineer.
@@ -32,19 +34,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleOptimize({ prompt, mode }) {
-  const { apiKey, provider } = await chrome.storage.sync.get(['apiKey', 'provider']);
+  // Gemini key is bundled — no storage or provider lookup needed.
+  return callGemini(GEMINI_API_KEY, prompt, mode);
+}
 
-  if (!apiKey) return { error: 'NO_API_KEY' };
+// ─── Gemini ───────────────────────────────────────────────────────────────────
+async function callGemini(apiKey, prompt, mode) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPTS[mode] }] },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      }),
+    }
+  );
 
-  const selectedProvider = provider || 'openai';
-
-  if (selectedProvider === 'openai') {
-    return callOpenAI(apiKey, prompt, mode);
-  } else if (selectedProvider === 'anthropic') {
-    return callAnthropic(apiKey, prompt, mode);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Gemini error ${res.status}`);
   }
 
-  return { error: `Unknown provider: ${selectedProvider}` };
+  const data = await res.json();
+  const text = data.candidates[0].content.parts[0].text.trim();
+  return parseResult(text, mode);
 }
 
 // ─── OpenAI ───────────────────────────────────────────────────────────────────

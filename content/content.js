@@ -1,4 +1,4 @@
-// Promptly — content script
+// Promptera — content script
 // Detects which LLM site we're on, finds the chat input, and injects the optimizer button.
 
 const SITES = {
@@ -14,10 +14,15 @@ const SITES = {
       document.execCommand('selectAll');
       document.execCommand('insertText', false, text);
     },
-    getButtonContainer: () =>
-      document.querySelector('div[data-testid="chat-input-footer"]') ||
-      document.querySelector('fieldset') ||
-      document.querySelector('form'),
+    buttonClass: 'promptera-btn--claude',
+    // Anchor = the mic/dictation button in the input's bottom-right action group.
+    // ⚡ is inserted BEFORE it (to its left). Falls back to the send button.
+    getButtonAnchor: () =>
+      document.querySelector('button[aria-label="Dictate button"]') ||
+      document.querySelector('button[aria-label*="dictation" i]') ||
+      document.querySelector('button[aria-label*="voice" i]') ||
+      document.querySelector('button[aria-label="Send message" i]') ||
+      document.querySelector('fieldset button[aria-label*="send" i]'),
   },
   'chatgpt.com': {
     name: 'ChatGPT',
@@ -37,20 +42,15 @@ const SITES = {
         document.execCommand('insertText', false, text);
       }
     },
-    getButtonContainer: () => {
-      // Right-side trailing actions in the composer footer (mic + send). The send
-      // button only renders once you've typed, so also anchor on the always-present
-      // mic/voice button. Return null (never <form>) when the footer hasn't mounted
-      // yet, so the MutationObserver retries instead of pinning ⚡ to the bottom-left.
-      const trailing = document.querySelector('[data-testid="composer-trailing-actions"]');
-      if (trailing) return trailing;
-      const anchorBtn =
-        document.querySelector('[data-testid="send-button"]') ||
-        document.querySelector('[data-testid="composer-speech-button"]') ||
-        document.querySelector('button[aria-label="Start voice mode"]') ||
-        document.querySelector('button[aria-label="Dictate button"]');
-      return anchorBtn ? anchorBtn.parentElement : null;
-    },
+    buttonClass: 'promptera-btn--chatgpt',
+    // Anchor = the mic/voice button in the composer's trailing actions. ⚡ is
+    // inserted BEFORE it, so it sits to the left of the right-side buttons. The
+    // send button only mounts once you type, so the mic is the reliable anchor.
+    getButtonAnchor: () =>
+      document.querySelector('[data-testid="composer-speech-button"]') ||
+      document.querySelector('button[aria-label="Start voice mode"]') ||
+      document.querySelector('button[aria-label="Dictate button"]') ||
+      document.querySelector('[data-testid="send-button"]'),
   },
   'chat.openai.com': {
     name: 'ChatGPT',
@@ -70,18 +70,13 @@ const SITES = {
         document.execCommand('insertText', false, text);
       }
     },
-    getButtonContainer: () => {
-      // Mirror chatgpt.com: anchor on the always-present mic/voice button (and the
-      // trailing-actions wrapper), returning null rather than <form> until mounted.
-      const trailing = document.querySelector('[data-testid="composer-trailing-actions"]');
-      if (trailing) return trailing;
-      const anchorBtn =
-        document.querySelector('[data-testid="send-button"]') ||
-        document.querySelector('[data-testid="composer-speech-button"]') ||
-        document.querySelector('button[aria-label="Start voice mode"]') ||
-        document.querySelector('button[aria-label="Dictate button"]');
-      return anchorBtn ? anchorBtn.parentElement : null;
-    },
+    buttonClass: 'promptera-btn--chatgpt',
+    // Mirror chatgpt.com: insert ⚡ before the mic/voice button.
+    getButtonAnchor: () =>
+      document.querySelector('[data-testid="composer-speech-button"]') ||
+      document.querySelector('button[aria-label="Start voice mode"]') ||
+      document.querySelector('button[aria-label="Dictate button"]') ||
+      document.querySelector('[data-testid="send-button"]'),
   },
   'gemini.google.com': {
     name: 'Gemini',
@@ -94,17 +89,23 @@ const SITES = {
       document.execCommand('selectAll');
       document.execCommand('insertText', false, text);
     },
-    getButtonContainer: () =>
-      document.querySelector('div.input-area-container') ||
-      document.querySelector('div[class*="input-area"]') ||
-      document.querySelector('form'),
+    buttonClass: 'promptera-btn--gemini',
+    // Anchor = the mic button in the right-side action row (alongside the model
+    // selector). ⚡ is inserted BEFORE it. Falls back to the send button.
+    getButtonAnchor: () =>
+      document.querySelector('speech-dictation-mic-button button') ||
+      document.querySelector('button[aria-label*="microphone" i]') ||
+      document.querySelector('button[mattooltip*="microphone" i]') ||
+      document.querySelector('button.mic-button') ||
+      document.querySelector('button[aria-label*="Send" i]') ||
+      document.querySelector('button.send-button'),
   },
 };
 
 // ─── Identify current site ────────────────────────────────────────────────────
 const hostname = location.hostname;
 const site = Object.keys(SITES).find((key) => hostname.includes(key));
-if (!site) throw new Error('Promptly: unsupported site');
+if (!site) throw new Error('Promptera: unsupported site');
 
 const siteConfig = SITES[site];
 
@@ -113,31 +114,31 @@ let overlayEl = null;
 
 function createOverlay() {
   const el = document.createElement('div');
-  el.id = 'promptly-overlay';
+  el.id = 'promptera-overlay';
   el.innerHTML = `
-    <div id="promptly-panel">
-      <div id="promptly-grain"></div>
+    <div id="promptera-panel">
+      <div id="promptera-grain"></div>
 
-      <header id="promptly-header">
-        <div id="promptly-brand">
-          <span id="promptly-logo"><img src="${chrome.runtime.getURL('icons/Icon.png')}" alt="" /></span>
-          <span id="promptly-titles">
-            <span id="promptly-wordmark">Promptly</span>
-            <span id="promptly-tagline">AI&nbsp;PROMPT&nbsp;OPTIMIZER</span>
+      <header id="promptera-header">
+        <div id="promptera-brand">
+          <span id="promptera-logo"><img src="${chrome.runtime.getURL('icons/Icon.png')}" alt="" /></span>
+          <span id="promptera-titles">
+            <span id="promptera-wordmark">Promptera</span>
+            <span id="promptera-tagline">AI&nbsp;PROMPT&nbsp;OPTIMIZER</span>
           </span>
         </div>
-        <button id="promptly-close" title="Close" aria-label="Close">✕</button>
+        <button id="promptera-close" title="Close" aria-label="Close">✕</button>
       </header>
 
-      <div id="promptly-body">
-        <section id="promptly-original-section">
-          <label for="promptly-original">Input · your prompt</label>
-          <textarea id="promptly-original" rows="4" placeholder="Paste or type the prompt you want to refine…"></textarea>
+      <div id="promptera-body">
+        <section id="promptera-original-section">
+          <label for="promptera-original">Input · your prompt</label>
+          <textarea id="promptera-original" rows="4" placeholder="Paste or type the prompt you want to refine…"></textarea>
         </section>
 
-        <section id="promptly-modes-section">
+        <section id="promptera-modes-section">
           <label>Optimization mode</label>
-          <div id="promptly-modes">
+          <div id="promptera-modes">
             <button class="mode-btn active" data-mode="clarity">
               <span class="mode-idx">01</span>
               <span class="mode-name">Rewrite</span>
@@ -156,14 +157,14 @@ function createOverlay() {
           </div>
         </section>
 
-        <button id="promptly-optimize-btn">Optimize Prompt</button>
+        <button id="promptera-optimize-btn">Optimize Prompt</button>
 
-        <section id="promptly-results-section" style="display:none">
+        <section id="promptera-results-section" style="display:none">
           <label>Output · optimized</label>
-          <div id="promptly-results"></div>
+          <div id="promptera-results"></div>
         </section>
 
-        <div id="promptly-api-note" style="display:none">
+        <div id="promptera-api-note" style="display:none">
           <span class="note-bar"></span>
           <span>Add your API key in the extension popup to enable optimization.</span>
         </div>
@@ -184,12 +185,12 @@ function createOverlay() {
   });
 
   // Close
-  el.querySelector('#promptly-close').addEventListener('click', closeOverlay);
+  el.querySelector('#promptera-close').addEventListener('click', closeOverlay);
   el.addEventListener('click', (e) => { if (e.target === el) closeOverlay(); });
 
   // Optimize
-  el.querySelector('#promptly-optimize-btn').addEventListener('click', async () => {
-    const prompt = el.querySelector('#promptly-original').value.trim();
+  el.querySelector('#promptera-optimize-btn').addEventListener('click', async () => {
+    const prompt = el.querySelector('#promptera-original').value.trim();
     if (!prompt) return;
     await runOptimization(prompt, selectedMode);
   });
@@ -203,9 +204,9 @@ function openOverlay() {
   // Pre-fill current prompt
   const input = siteConfig.getInput();
   const currentText = input ? siteConfig.getInputText(input) : '';
-  overlayEl.querySelector('#promptly-original').value = currentText;
-  overlayEl.querySelector('#promptly-results-section').style.display = 'none';
-  overlayEl.querySelector('#promptly-api-note').style.display = 'none';
+  overlayEl.querySelector('#promptera-original').value = currentText;
+  overlayEl.querySelector('#promptera-results-section').style.display = 'none';
+  overlayEl.querySelector('#promptera-api-note').style.display = 'none';
   overlayEl.style.display = 'flex';
 }
 
@@ -215,10 +216,10 @@ function closeOverlay() {
 
 // ─── Optimization logic ───────────────────────────────────────────────────────
 async function runOptimization(prompt, mode) {
-  const btn = overlayEl.querySelector('#promptly-optimize-btn');
-  const resultsSection = overlayEl.querySelector('#promptly-results-section');
-  const resultsEl = overlayEl.querySelector('#promptly-results');
-  const apiNote = overlayEl.querySelector('#promptly-api-note');
+  const btn = overlayEl.querySelector('#promptera-optimize-btn');
+  const resultsSection = overlayEl.querySelector('#promptera-results-section');
+  const resultsEl = overlayEl.querySelector('#promptera-results');
+  const apiNote = overlayEl.querySelector('#promptera-api-note');
 
   btn.disabled = true;
   btn.textContent = 'Optimizing…';
@@ -231,11 +232,6 @@ async function runOptimization(prompt, mode) {
       type: 'OPTIMIZE_PROMPT',
       payload: { prompt, mode, site: siteConfig.name },
     });
-
-    if (response.error === 'NO_API_KEY') {
-      apiNote.style.display = 'flex';
-      return;
-    }
 
     if (response.error) {
       resultsEl.innerHTML = `<div class="result-card error">Error: ${response.error}</div>`;
@@ -283,28 +279,29 @@ async function runOptimization(prompt, mode) {
 
 // ─── Button injection ─────────────────────────────────────────────────────────
 function injectButton() {
-  if (document.getElementById('promptly-trigger-btn')) return;
+  if (document.getElementById('promptera-trigger-btn')) return;
 
   const input = siteConfig.getInput();
   if (!input) return;
 
+  // Anchor = the native button we sit beside (the mic). We insert ⚡ *before* it so
+  // it lands inside the action row, to the left of the mic. If the bar hasn't
+  // mounted yet, bail — the MutationObserver will call back once it renders.
+  const anchor = siteConfig.getButtonAnchor();
+  if (!anchor || !anchor.parentElement) return;
+
   const btn = document.createElement('button');
-  btn.id = 'promptly-trigger-btn';
-  btn.title = 'Open Promptly prompt optimizer';
-  btn.innerHTML = `<img src="${chrome.runtime.getURL('icons/Icon.png')}" alt="Promptly" />`;
+  btn.id = 'promptera-trigger-btn';
+  if (siteConfig.buttonClass) btn.classList.add(siteConfig.buttonClass);
+  btn.title = 'Open Promptera prompt optimizer';
+  btn.innerHTML = `<img src="${chrome.runtime.getURL('icons/Icon.png')}" alt="Promptera" />`;
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     openOverlay();
   });
 
-  // Insert into the composer's trailing-actions group (right side of the bar).
-  // If the container isn't there yet, bail without injecting — the MutationObserver
-  // will call back once it mounts, rather than stranding ⚡ in a fixed-position spot.
-  const container = siteConfig.getButtonContainer();
-  if (!container) return;
-  container.style.position = container.style.position || 'relative';
-  container.appendChild(btn);
+  anchor.parentElement.insertBefore(btn, anchor);
 }
 
 // ─── Observe DOM for SPA navigation ──────────────────────────────────────────
@@ -322,7 +319,7 @@ function tryInject() {
 
 // MutationObserver to re-inject after SPA nav
 const observer = new MutationObserver(() => {
-  if (!document.getElementById('promptly-trigger-btn')) {
+  if (!document.getElementById('promptera-trigger-btn')) {
     retries = 0;
     tryInject();
   }
