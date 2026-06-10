@@ -14,6 +14,7 @@ Enhance the user's prompt by adding useful context, specifying the desired forma
 - Add a role if helpful (e.g., "You are an expert in...")
 - Specify output format if relevant
 - Clarify any implicit assumptions
+
 Return ONLY the enhanced prompt, no commentary.`,
 
   alternatives: `You are an expert prompt engineer.
@@ -40,9 +41,9 @@ async function handleOptimize({ prompt, mode }) {
 }
 
 async function callGemini(apiKey, prompt, mode) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: SYSTEM_PROMPTS[mode] + '\n\n' + prompt }] }],
       generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
