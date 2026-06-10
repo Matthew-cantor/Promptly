@@ -234,7 +234,7 @@ async function runOptimization(prompt, mode) {
     });
 
     if (response.error) {
-      resultsEl.innerHTML = `<div class="result-card error">Error: ${response.error}</div>`;
+      resultsEl.innerHTML = `<div class="result-card error">Error: ${escapeHtml(response.error)}</div>`;
       resultsSection.style.display = 'block';
       return;
     }

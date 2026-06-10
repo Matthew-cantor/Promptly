@@ -1,8 +1,6 @@
 // Promptera — background service worker
 // Handles API calls so we can safely store keys in chrome.storage and avoid CORS issues.
 
-const GEMINI_API_KEY = 'placeholder';
-
 const SYSTEM_PROMPTS = {
   clarity: `You are an expert prompt engineer.
 Rewrite the user's prompt to be clearer, more specific, and more likely to get a high-quality response from an AI assistant.
@@ -34,89 +32,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleOptimize({ prompt, mode }) {
-  // Gemini key is bundled — no storage or provider lookup needed.
-  return callGemini(GEMINI_API_KEY, prompt, mode);
+  const { geminiApiKey } = await chrome.storage.local.get(['geminiApiKey']);
+  if (!geminiApiKey) {
+    throw new Error('No API key set. Click the Promptera icon to add your Gemini API key.');
+  }
+  return callGemini(geminiApiKey, prompt, mode);
 }
 
-// ─── Gemini ───────────────────────────────────────────────────────────────────
 async function callGemini(apiKey, prompt, mode) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPTS[mode] }] },
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      }),
-    }
-  );
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [{ text: SYSTEM_PROMPTS[mode] + '\n\n' + prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 1024 }
+    }),
+  });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Gemini error ${res.status}`);
+    throw new Error(JSON.stringify(err) || `Gemini error ${res.status}`);
   }
 
   const data = await res.json();
   const text = data.candidates[0].content.parts[0].text.trim();
-  return parseResult(text, mode);
-}
-
-// ─── OpenAI ───────────────────────────────────────────────────────────────────
-async function callOpenAI(apiKey, prompt, mode) {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPTS[mode] },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 1024,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `OpenAI error ${res.status}`);
-  }
-
-  const data = await res.json();
-  const text = data.choices[0].message.content.trim();
-  return parseResult(text, mode);
-}
-
-// ─── Anthropic ────────────────────────────────────────────────────────────────
-async function callAnthropic(apiKey, prompt, mode) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPTS[mode],
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error?.message || `Anthropic error ${res.status}`);
-  }
-
-  const data = await res.json();
-  const text = data.content[0].text.trim();
   return parseResult(text, mode);
 }
 
